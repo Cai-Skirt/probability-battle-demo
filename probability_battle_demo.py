@@ -9,6 +9,10 @@ from typing import Any, Callable
 
 
 EPSILON = 1e-12
+DOT_ALIASES = ("。", "．", "｡", "﹒")
+MINUS_ALIASES = ("－", "﹣", "−")
+PERIOD_KEYSYMS = {"period", "KP_Decimal", "KP_Separator", "decimal"}
+PERIOD_KEYCODES = {190, 110}
 
 
 @dataclass(frozen=True)
@@ -55,12 +59,21 @@ class DuelResult:
     winner_text: str
 
 
+def normalize_numeric_input(text: str) -> str:
+    normalized = text
+    for dot in DOT_ALIASES:
+        normalized = normalized.replace(dot, ".")
+    for minus in MINUS_ALIASES:
+        normalized = normalized.replace(minus, "-")
+    return normalized
+
+
 def int_parser(text: str) -> int:
-    return int(text)
+    return int(normalize_numeric_input(text).strip())
 
 
 def float_parser(text: str) -> float:
-    return float(text)
+    return float(normalize_numeric_input(text).strip())
 
 
 def positive(value: float) -> str | None:
@@ -319,6 +332,10 @@ class ProbabilityBattleApp:
         self.player_selection: Selection | None = None
         self.param_vars: dict[str, tk.StringVar] = {}
         self.battle_round = 0
+        self.fixed_total = 0
+        self.fixed_player_wins = 0
+        self.fixed_enemy_wins = 0
+        self.fixed_ties = 0
 
         self.root = tk.Tk()
         self.root.title("概率对战 Demo（可视化版）")
@@ -327,6 +344,7 @@ class ProbabilityBattleApp:
 
         self.enemy_status_var = tk.StringVar(value="未锁定")
         self.player_status_var = tk.StringVar(value="未锁定")
+        self.fixed_stats_var = tk.StringVar(value="未开始判定")
 
         self._build_ui()
         self._reset_to_opponent_level()
@@ -354,6 +372,10 @@ class ProbabilityBattleApp:
         ttk.Label(status, text="你：").grid(row=1, column=0, sticky="nw", padx=(0, 6))
         ttk.Label(status, textvariable=self.player_status_var, justify="left").grid(
             row=1, column=1, sticky="w"
+        )
+        ttk.Label(status, text="固定配置统计：").grid(row=2, column=0, sticky="nw", padx=(0, 6))
+        ttk.Label(status, textvariable=self.fixed_stats_var, justify="left").grid(
+            row=2, column=1, sticky="w"
         )
 
         main = ttk.Frame(self.root, padding=(12, 0, 12, 12))
@@ -413,7 +435,7 @@ class ProbabilityBattleApp:
         row += 1
         self.duel_btn = ttk.Button(
             control_panel,
-            text="开始/再次判定",
+            text="开始判定",
             command=self.start_or_rematch,
             state="disabled",
         )
@@ -488,13 +510,39 @@ class ProbabilityBattleApp:
         else:
             self.player_status_var.set("未锁定")
 
+    def _update_duel_button_text(self) -> None:
+        if self.fixed_total > 0:
+            self.duel_btn.configure(text="立刻再次判定（保持敌人、模型、参数不变）")
+        else:
+            self.duel_btn.configure(text="开始判定")
+
+    def _set_fixed_stats_status(self) -> None:
+        if self.fixed_total == 0:
+            self.fixed_stats_var.set("未开始判定")
+            return
+
+        win_rate = 100.0 * self.fixed_player_wins / self.fixed_total
+        self.fixed_stats_var.set(
+            f"{self.fixed_player_wins}胜 {self.fixed_enemy_wins}负 {self.fixed_ties}平，"
+            f"胜率={win_rate:.2f}%（{self.fixed_player_wins}/{self.fixed_total}）"
+        )
+
+    def _reset_fixed_stats(self) -> None:
+        self.battle_round = 0
+        self.fixed_total = 0
+        self.fixed_player_wins = 0
+        self.fixed_enemy_wins = 0
+        self.fixed_ties = 0
+        self._set_fixed_stats_status()
+        self._update_duel_button_text()
+
     def _reset_to_opponent_level(self) -> None:
         self.current_opponent = None
         self.enemy_selection = None
         self.current_model = None
         self.player_selection = None
         self.param_vars = {}
-        self.battle_round = 0
+        self._reset_fixed_stats()
 
         self.opponent_combo.configure(state="readonly")
         if not self.opponent_combo.get() and self.opponents:
@@ -517,6 +565,33 @@ class ProbabilityBattleApp:
             child.destroy()
         self.param_vars = {}
 
+    def _normalize_param_var_realtime(self, var: tk.StringVar) -> None:
+        value = var.get()
+        normalized = normalize_numeric_input(value)
+        if normalized != value:
+            var.set(normalized)
+
+    def _is_period_key_event(self, event: tk.Event) -> bool:
+        if event.keysym in PERIOD_KEYSYMS:
+            return True
+        keycode = getattr(event, "keycode", None)
+        if isinstance(keycode, int) and keycode in PERIOD_KEYCODES:
+            return True
+        return False
+
+    def _on_param_keypress(self, event: tk.Event) -> str | None:
+        # Ignore shortcuts such as Ctrl+.
+        if event.state & 0x000C:
+            return None
+
+        if event.char == "." or event.char in DOT_ALIASES or self._is_period_key_event(event):
+            event.widget.insert(tk.INSERT, ".")
+            return "break"
+        if event.char == "-" or event.char in MINUS_ALIASES:
+            event.widget.insert(tk.INSERT, "-")
+            return "break"
+        return None
+
     def _build_param_form(self, model: DistributionSpec, preset: dict[str, Any] | None = None) -> None:
         self._clear_param_form()
         for i, spec in enumerate(model.params):
@@ -526,7 +601,10 @@ class ProbabilityBattleApp:
                 value = str(preset[spec.name])
             var = tk.StringVar(value=value)
             self.param_vars[spec.name] = var
-            ttk.Entry(self.param_form_frame, textvariable=var, width=20).grid(
+            var.trace_add("write", lambda *_args, v=var: self._normalize_param_var_realtime(v))
+            entry = ttk.Entry(self.param_form_frame, textvariable=var, width=20)
+            entry.bind("<KeyPress>", self._on_param_keypress)
+            entry.grid(
                 row=i, column=1, sticky="ew", padx=(8, 0), pady=1
             )
 
@@ -562,7 +640,7 @@ class ProbabilityBattleApp:
         self.current_model = None
         self.player_selection = None
         self.param_vars = {}
-        self.battle_round = 0
+        self._reset_fixed_stats()
 
         self.model_combo.configure(state="readonly")
         if self.distributions:
@@ -590,6 +668,7 @@ class ProbabilityBattleApp:
 
         self.current_model = self.distributions[idx]
         self.player_selection = None
+        self._reset_fixed_stats()
         self._build_param_form(self.current_model)
         self.lock_params_btn.configure(state="normal")
         self.duel_btn.configure(state="disabled")
@@ -607,6 +686,7 @@ class ProbabilityBattleApp:
         if parsed is None:
             return
 
+        self._reset_fixed_stats()
         self.player_selection = Selection(self.current_model, parsed)
         self.duel_btn.configure(state="normal")
         self.back_param_btn.configure(state="normal")
@@ -620,6 +700,7 @@ class ProbabilityBattleApp:
             messagebox.showwarning("提示", "请先锁定敌人、模型和参数。")
             return
 
+        is_instant_rematch = self.fixed_total > 0
         self.battle_round += 1
         result = run_duel(self.rng, self.player_selection, self.enemy_selection)
         self._append_log(f"\n=== 第 {self.battle_round} 局 ===")
@@ -643,11 +724,30 @@ class ProbabilityBattleApp:
         )
         self._append_log(f"结果：{result.winner_text}")
 
+        self.fixed_total += 1
+        if result.winner_text == "你获胜":
+            self.fixed_player_wins += 1
+        elif result.winner_text == "电脑获胜":
+            self.fixed_enemy_wins += 1
+        else:
+            self.fixed_ties += 1
+        self._set_fixed_stats_status()
+        self._update_duel_button_text()
+
+        if is_instant_rematch:
+            win_rate = 100.0 * self.fixed_player_wins / self.fixed_total
+            self._append_log(
+                "[固定配置统计] "
+                f"{self.fixed_player_wins}胜 {self.fixed_enemy_wins}负 {self.fixed_ties}平，"
+                f"玩家胜率={win_rate:.2f}%（{self.fixed_player_wins}/{self.fixed_total}）"
+            )
+
     def back_to_params(self) -> None:
         if self.current_model is None:
             return
         preset = self.player_selection.params if self.player_selection else None
         self.player_selection = None
+        self._reset_fixed_stats()
         self._build_param_form(self.current_model, preset)
         self.duel_btn.configure(state="disabled")
         self._set_player_status()
@@ -658,6 +758,7 @@ class ProbabilityBattleApp:
             return
         self.current_model = None
         self.player_selection = None
+        self._reset_fixed_stats()
         self.model_combo.configure(state="readonly")
         self.lock_model_btn.configure(state="normal")
         self.lock_params_btn.configure(state="disabled")
