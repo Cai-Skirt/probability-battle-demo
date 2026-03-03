@@ -70,14 +70,32 @@
         </aside>
 
         <section class="right">
-          <article class="card panel">
-            <h2>分布说明</h2>
-            <div id="distribution-help" class="distribution-help"></div>
-          </article>
-
           <article class="card panel grow">
             <h2>对战记录</h2>
             <pre id="battle-log" class="log"></pre>
+          </article>
+
+          <details class="card panel collapsible-panel">
+            <summary>分布说明（点击展开）</summary>
+            <div id="distribution-help" class="distribution-help"></div>
+          </details>
+
+          <article class="card panel">
+            <h2>最优策略提示</h2>
+            <div class="strategy-table-wrap">
+              <table class="strategy-table" aria-label="最优策略提示表">
+                <thead>
+                  <tr>
+                    <th>敌人</th>
+                    <th>推荐策略</th>
+                    <th>预估胜率</th>
+                    <th>说明</th>
+                  </tr>
+                </thead>
+                <tbody id="strategy-table-body"></tbody>
+              </table>
+            </div>
+            <p class="strategy-note">注：胜率来自当前版本固定参数下的蒙特卡洛估计。</p>
           </article>
         </section>
       </section>

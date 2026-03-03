@@ -4,6 +4,38 @@ const MINUS_ALIASES = ["－", "﹣", "−"];
 const PERIOD_CODES = new Set(["Period", "NumpadDecimal"]);
 const PERIOD_KEYS = new Set([".", "。", "．", "｡", "﹒"]);
 const MINUS_KEYS = new Set(["-", "－", "﹣", "−"]);
+const BEST_STRATEGY_TIPS = [
+  {
+    opponent: "均值工程师",
+    strategy: "Binomial(n=32, p=0.978076422412949)",
+    winRate: "~53.0%",
+    note: "稳健压制",
+  },
+  {
+    opponent: "爆发投机者",
+    strategy: "Normal(0, sigma=0.08477435925090383)",
+    winRate: "~62.6%",
+    note: "用低波动克高波动",
+  },
+  {
+    opponent: "离散操盘手",
+    strategy: "Binomial(n=1, p=0.3)",
+    winRate: "~57.7%",
+    note: "离散对离散",
+  },
+  {
+    opponent: "泊松计数师",
+    strategy: "Binomial(n=17, p=0.046748029747690545)",
+    winRate: "~59.1%",
+    note: "偏态反制",
+  },
+  {
+    opponent: "全随机模拟器",
+    strategy: "先锁定敌人后针对其当局参数选策略",
+    winRate: "-",
+    note: "无固定最优",
+  },
+];
 
 const state = {
   distributions: [],
@@ -29,6 +61,7 @@ const ui = {
   modelSelect: document.querySelector("#model-select"),
   paramForm: document.querySelector("#param-form"),
   distributionHelp: document.querySelector("#distribution-help"),
+  strategyTableBody: document.querySelector("#strategy-table-body"),
   battleLog: document.querySelector("#battle-log"),
   lockEnemyBtn: document.querySelector("#lock-enemy-btn"),
   lockModelBtn: document.querySelector("#lock-model-btn"),
@@ -490,6 +523,34 @@ function renderDistributionHelp() {
   ui.distributionHelp.textContent = lines.join("\n");
 }
 
+function renderStrategyTable() {
+  ui.strategyTableBody.innerHTML = "";
+  BEST_STRATEGY_TIPS.forEach((tip) => {
+    const tr = document.createElement("tr");
+    tr.dataset.opponent = tip.opponent;
+
+    const opponentCell = document.createElement("td");
+    opponentCell.textContent = tip.opponent;
+    const strategyCell = document.createElement("td");
+    strategyCell.textContent = tip.strategy;
+    const winRateCell = document.createElement("td");
+    winRateCell.textContent = tip.winRate;
+    const noteCell = document.createElement("td");
+    noteCell.textContent = tip.note;
+
+    tr.append(opponentCell, strategyCell, winRateCell, noteCell);
+    ui.strategyTableBody.append(tr);
+  });
+}
+
+function highlightStrategyForEnemy(opponentName) {
+  const rows = ui.strategyTableBody.querySelectorAll("tr");
+  rows.forEach((row) => {
+    if (opponentName && row.dataset.opponent === opponentName) row.classList.add("active-row");
+    else row.classList.remove("active-row");
+  });
+}
+
 function resetToEnemyLevel() {
   state.currentOpponent = null;
   state.enemySelection = null;
@@ -499,6 +560,7 @@ function resetToEnemyLevel() {
   clearParamForm();
   updateEnemyStatus();
   updatePlayerStatus();
+  highlightStrategyForEnemy(null);
   setControlStates({
     modelEnabled: false,
     lockModelEnabled: false,
@@ -521,6 +583,7 @@ function onLockEnemy() {
   clearParamForm();
   updateEnemyStatus();
   updatePlayerStatus();
+  highlightStrategyForEnemy(state.currentOpponent.name);
   setControlStates({
     modelEnabled: true,
     lockModelEnabled: true,
@@ -607,6 +670,11 @@ function onDuel() {
     const rate = ((100 * playerWins) / total).toFixed(2);
     appendLog(`[固定配置统计] ${playerWins}胜 ${enemyWins}负 ${ties}平，玩家胜率=${rate}%（${playerWins}/${total}）`);
   }
+
+  const logPanel = ui.battleLog.closest(".panel");
+  if (logPanel) {
+    logPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
 }
 
 function onBackToParams() {
@@ -686,6 +754,7 @@ function init() {
   state.opponents = buildOpponents(state.distributions);
   setupSelectors();
   renderDistributionHelp();
+  renderStrategyTable();
   bindEvents();
   resetToEnemyLevel();
   appendLog("[系统] Web 版已加载，先锁定敌人，再开始对战。");

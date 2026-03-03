@@ -13,6 +13,38 @@ DOT_ALIASES = ("。", "．", "｡", "﹒")
 MINUS_ALIASES = ("－", "﹣", "−")
 PERIOD_KEYSYMS = {"period", "KP_Decimal", "KP_Separator", "decimal"}
 PERIOD_KEYCODES = {190, 110}
+BEST_STRATEGY_ROWS = (
+    (
+        "均值工程师",
+        "Binomial(n=32, p=0.978076422412949)",
+        "~53.0%",
+        "稳健压制",
+    ),
+    (
+        "爆发投机者",
+        "Normal(0, sigma=0.08477435925090383)",
+        "~62.6%",
+        "用低波动克高波动",
+    ),
+    (
+        "离散操盘手",
+        "Binomial(n=1, p=0.3)",
+        "~57.7%",
+        "离散对离散",
+    ),
+    (
+        "泊松计数师",
+        "Binomial(n=17, p=0.046748029747690545)",
+        "~59.1%",
+        "偏态反制",
+    ),
+    (
+        "全随机模拟器",
+        "先锁定敌人后针对其当局参数选策略",
+        "-",
+        "无固定最优",
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -336,11 +368,12 @@ class ProbabilityBattleApp:
         self.fixed_player_wins = 0
         self.fixed_enemy_wins = 0
         self.fixed_ties = 0
+        self.strategy_row_ids: dict[str, str] = {}
 
         self.root = tk.Tk()
         self.root.title("概率对战 Demo（可视化版）")
-        self.root.geometry("980x680")
-        self.root.minsize(900, 620)
+        self.root.geometry("1060x760")
+        self.root.minsize(960, 660)
 
         self.enemy_status_var = tk.StringVar(value="未锁定")
         self.player_status_var = tk.StringVar(value="未锁定")
@@ -459,7 +492,7 @@ class ProbabilityBattleApp:
         info_panel = ttk.Frame(main)
         info_panel.grid(row=0, column=1, rowspan=2, sticky="nsew", padx=(12, 0))
         info_panel.columnconfigure(0, weight=1)
-        info_panel.rowconfigure(1, weight=1)
+        info_panel.rowconfigure(2, weight=1)
 
         dist_frame = ttk.LabelFrame(info_panel, text="分布说明", padding=8)
         dist_frame.grid(row=0, column=0, sticky="ew")
@@ -468,8 +501,40 @@ class ProbabilityBattleApp:
         dist_text.insert("1.0", self._distribution_help_text())
         dist_text.configure(state="disabled")
 
+        strategy_frame = ttk.LabelFrame(info_panel, text="最优策略提示", padding=8)
+        strategy_frame.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        strategy_frame.columnconfigure(0, weight=1)
+        strategy_frame.rowconfigure(0, weight=1)
+        self.strategy_table = ttk.Treeview(
+            strategy_frame,
+            columns=("opponent", "strategy", "win_rate", "note"),
+            show="headings",
+            height=6,
+        )
+        self.strategy_table.heading("opponent", text="敌人")
+        self.strategy_table.heading("strategy", text="推荐策略")
+        self.strategy_table.heading("win_rate", text="预估胜率")
+        self.strategy_table.heading("note", text="说明")
+        self.strategy_table.column("opponent", width=110, anchor="w")
+        self.strategy_table.column("strategy", width=330, anchor="w")
+        self.strategy_table.column("win_rate", width=92, anchor="center")
+        self.strategy_table.column("note", width=120, anchor="center")
+        self.strategy_table.grid(row=0, column=0, sticky="nsew")
+        strategy_scroll = ttk.Scrollbar(
+            strategy_frame,
+            orient="vertical",
+            command=self.strategy_table.yview,
+        )
+        strategy_scroll.grid(row=0, column=1, sticky="ns")
+        self.strategy_table.configure(yscrollcommand=strategy_scroll.set)
+        self._populate_strategy_table()
+        ttk.Label(
+            strategy_frame,
+            text="注：胜率来自当前版本固定参数下的蒙特卡洛估计。",
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+
         log_frame = ttk.LabelFrame(info_panel, text="对战记录", padding=8)
-        log_frame.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
+        log_frame.grid(row=2, column=0, sticky="nsew", pady=(8, 0))
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(0, weight=1)
         self.log_text = tk.Text(log_frame, wrap="word")
@@ -485,6 +550,26 @@ class ProbabilityBattleApp:
             lines.append(f"   {dist.description}")
             lines.append(f"   {dist.centering_note}")
         return "\n".join(lines)
+
+    def _populate_strategy_table(self) -> None:
+        for opponent, strategy, win_rate, note in BEST_STRATEGY_ROWS:
+            row_id = self.strategy_table.insert(
+                "",
+                "end",
+                values=(opponent, strategy, win_rate, note),
+            )
+            self.strategy_row_ids[opponent] = row_id
+
+    def _focus_strategy_tip(self, opponent_name: str | None) -> None:
+        self.strategy_table.selection_remove(self.strategy_table.selection())
+        if opponent_name is None:
+            return
+        row_id = self.strategy_row_ids.get(opponent_name)
+        if row_id is None:
+            return
+        self.strategy_table.selection_set(row_id)
+        self.strategy_table.focus(row_id)
+        self.strategy_table.see(row_id)
 
     def _append_log(self, text: str) -> None:
         self.log_text.configure(state="normal")
@@ -559,6 +644,7 @@ class ProbabilityBattleApp:
         self._clear_param_form()
         self._set_enemy_status()
         self._set_player_status()
+        self._focus_strategy_tip(None)
 
     def _clear_param_form(self) -> None:
         for child in self.param_form_frame.winfo_children():
@@ -654,6 +740,7 @@ class ProbabilityBattleApp:
         self._clear_param_form()
         self._set_enemy_status()
         self._set_player_status()
+        self._focus_strategy_tip(self.current_opponent.name)
         self._append_log(f"[系统] 敌人已锁定：{self.current_opponent.name}")
 
     def lock_model(self) -> None:
