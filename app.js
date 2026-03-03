@@ -73,6 +73,38 @@ const ui = {
   clearLogBtn: document.querySelector("#clear-log-btn"),
 };
 
+function ensureStrategyTableBody() {
+  if (ui.strategyTableBody) return;
+  const right = document.querySelector(".right");
+  if (!right) return;
+
+  const panel = document.createElement("article");
+  panel.className = "card panel";
+  panel.innerHTML = `
+    <h2>最优策略提示</h2>
+    <div class="strategy-table-wrap">
+      <table class="strategy-table" aria-label="最优策略提示表">
+        <thead>
+          <tr>
+            <th>敌人</th>
+            <th>推荐策略</th>
+            <th>预估胜率</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody id="strategy-table-body"></tbody>
+      </table>
+    </div>
+    <p class="strategy-note">注：胜率来自当前版本固定参数下的蒙特卡洛估计。</p>
+  `;
+
+  const logPanel = right.querySelector("#battle-log")?.closest(".panel");
+  if (logPanel) right.insertBefore(panel, logPanel);
+  else right.append(panel);
+
+  ui.strategyTableBody = panel.querySelector("#strategy-table-body");
+}
+
 function normalizeNumericInput(text) {
   let normalized = String(text);
   for (const dot of DOT_ALIASES) normalized = normalized.replaceAll(dot, ".");
@@ -524,6 +556,7 @@ function renderDistributionHelp() {
 }
 
 function renderStrategyTable() {
+  if (!ui.strategyTableBody) return;
   ui.strategyTableBody.innerHTML = "";
   BEST_STRATEGY_TIPS.forEach((tip) => {
     const tr = document.createElement("tr");
@@ -544,6 +577,7 @@ function renderStrategyTable() {
 }
 
 function highlightStrategyForEnemy(opponentName) {
+  if (!ui.strategyTableBody) return;
   const rows = ui.strategyTableBody.querySelectorAll("tr");
   rows.forEach((row) => {
     if (opponentName && row.dataset.opponent === opponentName) row.classList.add("active-row");
@@ -754,6 +788,7 @@ function init() {
   state.opponents = buildOpponents(state.distributions);
   setupSelectors();
   renderDistributionHelp();
+  ensureStrategyTableBody();
   renderStrategyTable();
   bindEvents();
   resetToEnemyLevel();
