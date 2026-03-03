@@ -1,6 +1,11 @@
 # 概率对战 Demo
 
-一个基于概率分布采样的双人对战小游戏（玩家 vs 电脑），已实现为 `tkinter` 可视化程序。
+一个基于概率分布采样的双人对战小游戏（玩家 vs 电脑），现已提供 Web 版（可直接在线玩）与 Python `tkinter` 桌面版。
+
+## 在线体验
+
+- GitHub Pages（部署后）：
+  - `https://cai-skirt.github.io/probability-battle-demo/`
 
 ## 核心规则
 
@@ -81,12 +86,22 @@
 
 ## 运行方式
 
-### 依赖
+### 方式一：直接在线玩（推荐）
+
+- 打开上面的 GitHub Pages 链接即可，无需安装任何环境。
+
+### 方式二：本地运行 Web 版
+
+在项目目录下双击 `index.html` 即可打开，或使用任意静态服务器启动。
+
+### 方式三：本地运行 Python 桌面版（可选）
+
+依赖：
 
 - Python 3.10+（推荐）
 - 标准库 `tkinter`（Windows 通常默认可用）
 
-### 启动
+启动：
 
 ```bash
 python probability_battle_demo.py
@@ -94,12 +109,13 @@ python probability_battle_demo.py
 
 ## 项目结构
 
-- `probability_battle_demo.py`：完整游戏逻辑与 GUI 程序入口
+- `index.html`：Web 页面入口
+- `styles.css`：Web 页面样式
+- `app.js`：Web 版完整游戏逻辑
+- `probability_battle_demo.py`：Python `tkinter` 桌面版
 - `README.md`：项目说明
 
 ## 说明
-
-本项目当前是单文件 Demo，便于快速验证玩法和策略。后续可扩展方向：
 
 - 加入多局赛制（BO3 / BO5）
 - 加入策略统计和胜率可视化
